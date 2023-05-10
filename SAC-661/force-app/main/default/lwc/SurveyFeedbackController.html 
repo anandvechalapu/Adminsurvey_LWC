@@ -1,0 +1,100 @@
+.
+
+<template>
+    <lightning-card title="Survey Feedback">
+        <div class="slds-m-around_medium">
+            <template if:true={questions.data}>
+                <template for:each={questions.data} for:item="question">
+                    <div class="slds-p-around_small">
+                        <p>{question.Name}</p>
+                        <template if:true={question.Question_Type__c == 'Text'}>
+                            <lightning-input label="Enter your answer"></lightning-input>
+                        </template>
+                        <template if:true={question.Question_Type__c == 'Single Choice'}>
+                            <template for:each={question.Choices__r.records} for:item="choice">
+                                <lightning-input type="radio" label={choice.Name} value={choice.Name} name="singleChoice"></lightning-input>
+                            </template>
+                        </template>
+                        <template if:true={question.Question_Type__c == 'Multiple Choice'}>
+                            <template for:each={question.Choices__r.records} for:item="choice">
+                                <lightning-input type="checkbox" label={choice.Name} value={choice.Name} name="multipleChoice"></lightning-input>
+                            </template>
+                        </template>
+                        <template if:true={question.Question_Type__c == 'Rating'}>
+                            <lightning-rating label="Rating" max-rating={5} value={value} onchange={handleRatingChange}></lightning-rating>
+                        </template>
+                    </div>
+                </template>
+            </template>
+            <lightning-button label="Submit" onclick={handleSubmit} class="slds-m-top_small"></lightning-button>
+        </div>
+    </lightning-card>
+</template>
+
+<script>
+import { LightningElement, api, wire } from 'lwc';
+import getQuestions from '@salesforce/apex/SurveyController.getQuestions';
+import { ShowToastEvent } from 'lightning/platformShowToastEvent';
+import saveResponse from '@salesforce/apex/SurveyController.saveResponse';
+
+export default class SurveyFeedback extends LightningElement {
+    @api recordId;
+    questions;
+    value;
+
+    @wire(getQuestions, { recordId: '$recordId' })
+    wiredQuestions({ error, data }) {
+        if (data) {
+            this.questions = data;
+        } else if (error) {
+            this.showToast('ERROR', error.body.message, 'error');
+        }
+    }
+
+    handleRatingChange(event) {
+        this.value = event.target.value;
+    }
+
+    handleSubmit() {
+        let responseData = [];
+        let singleChoice = this.template.querySelectorAll('[name="singleChoice"]');
+        if (singleChoice.length > 0) {
+            singleChoice.forEach(element => {
+                if (element.checked) {
+                    responseData.push({
+                        Question__c: element.value,
+                        Answer__c: element.label
+                    });
+                }
+            });
+        }
+        let multipleChoice = this.template.querySelectorAll('[name="multipleChoice"]');
+        if (multipleChoice.length > 0) {
+            multipleChoice.forEach(element => {
+                if (element.checked) {
+                    responseData.push({
+                        Question__c: element.value,
+                        Answer__c: element.label
+                    });
+                }
+            });
+        }
+        let rating = this.template.querySelectorAll('lightning-rating');
+        if (rating.length > 0) {
+            rating.forEach(element => {
+                responseData.push({
+                    Question__c: element.label,
+                    Answer__c: element.value
+                });
+            });
+        }
+        let params = {
+            recordId: this.recordId,
+            responseData: responseData
+        };
+        saveResponse(params)
+            .then(result => {
+                this.showToast('SUCCESS', 'Survey Response Saved Successfully', 'success');
+            })
+            .catch(error => {
+                this.showToast('ERROR', error
